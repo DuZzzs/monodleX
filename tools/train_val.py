@@ -32,7 +32,10 @@ def main():
     cfg = yaml.load(open(args.config, 'r'), Loader=yaml.Loader)
     set_random_seed(cfg.get('random_seed', 444))
     log_file = 'train.log.%s' % datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    logger = create_logger(log_file)
+    log_dir = cfg.get('log_dir', 'work_dirs/')
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir, exist_ok=True)
+    logger = create_logger(os.path.join(log_dir, log_file))
 
 
     # build dataloader
@@ -46,7 +49,8 @@ def main():
         tester = Tester(cfg=cfg['tester'],
                         model=model,
                         dataloader=test_loader,
-                        logger=logger)
+                        logger=logger,
+                        log_dir=log_dir)
         tester.test()
         return
 
@@ -67,14 +71,16 @@ def main():
                       test_loader=test_loader,
                       lr_scheduler=lr_scheduler,
                       warmup_lr_scheduler=warmup_lr_scheduler,
-                      logger=logger)
+                      logger=logger,
+                      log_dir=log_dir)
     trainer.train()
 
     logger.info('###################  Evaluation  ##################' )
     tester = Tester(cfg=cfg['tester'],
                     model=model,
                     dataloader=test_loader,
-                    logger=logger)
+                    logger=logger,
+                    log_dir=log_dir)
     tester.test()
 
 

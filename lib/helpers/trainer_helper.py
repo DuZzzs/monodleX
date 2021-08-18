@@ -20,7 +20,8 @@ class Trainer(object):
                  test_loader,
                  lr_scheduler,
                  warmup_lr_scheduler,
-                 logger):
+                 logger,
+                 log_dir):
         self.cfg = cfg
         self.model = model
         self.optimizer = optimizer
@@ -31,6 +32,7 @@ class Trainer(object):
         self.logger = logger
         self.epoch = 0
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.log_dir = log_dir
 
         # loading pretrain/resume model
         if cfg.get('pretrain_model'):
@@ -76,8 +78,8 @@ class Trainer(object):
 
             # save trained model
             if (self.epoch % self.cfg['save_frequency']) == 0:
-                os.makedirs('checkpoints', exist_ok=True)
-                ckpt_name = os.path.join('checkpoints', 'checkpoint_epoch_%d' % self.epoch)
+                os.makedirs(os.path.join(self.log_dir, 'checkpoints'), exist_ok=True)
+                ckpt_name = os.path.join(self.log_dir, 'checkpoints', 'checkpoint_epoch_%d' % self.epoch)
                 save_checkpoint(get_checkpoint_state(self.model, self.optimizer, self.epoch), ckpt_name)
 
             progress_bar.update()
