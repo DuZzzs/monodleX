@@ -185,9 +185,10 @@ class KITTI_Dataset(data.Dataset):
         heading_res = np.zeros((self.max_objs, 1), dtype=np.float32)
         src_size_3d = np.zeros((self.max_objs, 3), dtype=np.float32)
         size_3d = np.zeros((self.max_objs, 3), dtype=np.float32)
+        dimension = np.ones((self.max_objs, 3), dtype=np.float32)
         offset_3d = np.zeros((self.max_objs, 2), dtype=np.float32)
         indices = np.zeros((self.max_objs), dtype=np.int64)
-        mask_2d = np.zeros((self.max_objs), dtype=np.int64)
+        mask_2d = np.zeros((self.max_objs), dtype=np.int64)  # if you use smaller batch_size, there is a greater probability of nan.
         mask_3d = np.zeros((self.max_objs), dtype=np.int64)
         object_num = len(objects) if len(objects) < self.max_objs else self.max_objs
         for i in range(object_num):
@@ -258,6 +259,7 @@ class KITTI_Dataset(data.Dataset):
             src_size_3d[i] = np.array([objects[i].h, objects[i].w, objects[i].l], dtype=np.float32)
             mean_size = self.cls_mean_size[self.cls2id[objects[i].cls_type]]
             size_3d[i] = src_size_3d[i] - mean_size
+            dimension[i] = src_size_3d[i] - mean_size
 
             mask_2d[i] = 1
             mask_3d[i] = 0 if random_crop_flag else 1
@@ -271,6 +273,7 @@ class KITTI_Dataset(data.Dataset):
                    'offset_2d': offset_2d,
                    'indices': indices,
                    'size_3d': size_3d,
+                   'dimension': dimension,
                    'src_size_3d': src_size_3d,
                    'offset_3d': offset_3d,
                    'heading_bin': heading_bin,

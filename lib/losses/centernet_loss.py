@@ -7,6 +7,7 @@ from lib.losses.focal_loss import focal_loss_cornernet
 from lib.losses.uncertainty_loss import laplacian_aleatoric_uncertainty_loss
 from lib.losses.dim_aware_loss import dim_aware_l1_loss
 
+eps = 1e-6
 
 def compute_centernet3d_loss(input, target):
     stats_dict = {}
@@ -44,13 +45,18 @@ def compute_size2d_loss(input, target):
     size2d_input = extract_input_from_tensor(input['size_2d'], target['indices'], target['mask_2d'])
     size2d_target = extract_target_from_tensor(target['size_2d'], target['mask_2d'])
     size2d_loss = F.l1_loss(size2d_input, size2d_target, reduction='mean')
+    if torch.any(torch.isnan(size2d_loss)):
+        size2d_loss = torch.tensor([0.0]).to(size2d_input.device)
     return size2d_loss
 
 def compute_offset2d_loss(input, target):
     # compute offset2d loss
     offset2d_input = extract_input_from_tensor(input['offset_2d'], target['indices'], target['mask_2d'])
     offset2d_target = extract_target_from_tensor(target['offset_2d'], target['mask_2d'])
-    offset2d_loss = F.l1_loss(offset2d_input, offset2d_target, reduction='mean')
+    if(target['mask_2d'].sum() > 0):
+        offset2d_loss = F.l1_loss(offset2d_input, offset2d_target, reduction='mean')
+    else:
+        offset2d_loss = torch.tensor([0.0]).to(offset2d_input.device)
     return offset2d_loss
 
 
@@ -59,7 +65,10 @@ def compute_depth_loss(input, target):
     depth_input, depth_log_variance = depth_input[:, 0:1], depth_input[:, 1:2]
     depth_input = 1. / (depth_input.sigmoid() + 1e-6) - 1.
     depth_target = extract_target_from_tensor(target['depth'], target['mask_3d'])
-    depth_loss = laplacian_aleatoric_uncertainty_loss(depth_input, depth_target, depth_log_variance)
+    if target['mask_3d'].sum() > 0:
+        depth_loss = laplacian_aleatoric_uncertainty_loss(depth_input, depth_target, depth_log_variance)
+    else:
+        depth_loss = torch.tensor([0.0]).to(depth_input.device)
     return depth_loss
 
 
@@ -67,13 +76,29 @@ def compute_offset3d_loss(input, target):
     offset3d_input = extract_input_from_tensor(input['offset_3d'], target['indices'], target['mask_3d'])
     offset3d_target = extract_target_from_tensor(target['offset_3d'], target['mask_3d'])
     offset3d_loss = F.l1_loss(offset3d_input, offset3d_target, reduction='mean')
+    if target['mask_3d'].sum() > 0:
+        # if edge_fusion:
+        #     trunc_mask = extract_target_from_tensor(target['trunc_mask'], target['mask_3d']).bool()
+        #     offset_3d_loss = F.l1_loss(offset3d_input, offset3d_target, reduction='none').sum(dim=1)
+        #     trunc_offset3d_loss = torch.log(1 + offset_3d_loss[trunc_mask]).sum() / torch.clamp(trunc_mask.sum(), min=1)
+        #     offset_3d_loss = offset_3d_loss[~trunc_mask].mean()
+        #     offset3d_loss = trunc_offset3d_loss + offset_3d_loss
+        # else:
+        offset3d_loss = F.l1_loss(offset3d_input, offset3d_target, reduction='mean')
+    else:
+        offset3d_loss = torch.tensor([0.0]).to(offset3d_input.device)
     return offset3d_loss
 
 
 def compute_size3d_loss(input, target):
     size3d_input = extract_input_from_tensor(input['size_3d'], target['indices'], target['mask_3d'])
     size3d_target = extract_target_from_tensor(target['size_3d'], target['mask_3d'])
-    size3d_loss = dim_aware_l1_loss(size3d_input, size3d_target, size3d_target)
+    # target['dimension'] is size3d_target
+    dimension_target = extract_target_from_tensor(target['dimension'], target['mask_3d'])
+    if target['mask_3d'].sum() > 0:
+        size3d_loss = dim_aware_l1_loss(size3d_input, size3d_target, dimension_target)
+    else:
+        size3d_loss = torch.tensor([0.0]).to(size3d_input.device)
     return size3d_loss
 
 
@@ -86,18 +111,22 @@ def compute_heading_loss(input, target):
 
     # classification loss
     heading_input_cls = heading_input[:, 0:12]
-    heading_input_cls, heading_target_cls = heading_input_cls[mask], heading_target_cls[mask]
+    # heading_input_cls, heading_target_cls = heading_input_cls[mask], heading_target_cls[mask]
+    heading_input_cls, heading_target_cls = heading_input_cls[mask > 0], heading_target_cls[mask > 0]
     if mask.sum() > 0:
         cls_loss = F.cross_entropy(heading_input_cls, heading_target_cls, reduction='mean')
     else:
-        cls_loss = 0.0
+        cls_loss = torch.tensor([0.0]).to(heading_input_cls.device)
 
     # regression loss
     heading_input_res = heading_input[:, 12:24]
-    heading_input_res, heading_target_res = heading_input_res[mask], heading_target_res[mask]
+    heading_input_res, heading_target_res = heading_input_res[mask > 0], heading_target_res[mask > 0]
+
     cls_onehot = torch.zeros(heading_target_cls.shape[0], 12).cuda().scatter_(dim=1, index=heading_target_cls.view(-1, 1), value=1)
     heading_input_res = torch.sum(heading_input_res * cls_onehot, 1)
     reg_loss = F.l1_loss(heading_input_res, heading_target_res, reduction='mean')
+    if torch.any(torch.isnan(reg_loss)):
+        reg_loss = torch.tensor([0.0]).to(heading_input_res.device)
     return cls_loss + reg_loss
 
 
@@ -105,10 +134,10 @@ def compute_heading_loss(input, target):
 
 def extract_input_from_tensor(input, ind, mask):
     input = _transpose_and_gather_feat(input, ind)  # B*C*H*W --> B*K*C
-    return input[mask]  # B*K*C --> M * C
+    return input[mask > 0]  # B*K*C --> M * C
 
 def extract_target_from_tensor(target, mask):
-    return target[mask]
+    return target[mask > 0]
 
 
 if __name__ == '__main__':

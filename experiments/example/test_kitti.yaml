@@ -1,10 +1,10 @@
 random_seed: 444
-log_dir: 'work_dirs/pretrain/'
+log_dir: 'work_dirs/kitti_debug/'
 
 dataset:
   type: &dataset_type 'KITTI'
   root_dir: '/mydata/data/opendata/kitti/kitti/data'
-  batch_size: 4
+  batch_size: 6
   use_3d_center: True
   class_merging: False
   use_dontcare: False
@@ -34,7 +34,8 @@ lr_scheduler:
 
 trainer:
   max_epoch: 140
-  gpu_ids: 0, 1
+#  gpu_ids: 0, 1
+  gpu_ids: 0
   save_frequency: 10 # checkpoint save interval (in epoch)
   # resume_model: 'checkpoints/checkpoint_epoch_70.pth'
 
@@ -42,6 +43,7 @@ trainer:
 tester:
   type: *dataset_type
   mode: single   # 'single' or 'all'
-  checkpoint: 'checkpoint_epoch_140.pth'  # for 'single' mode
+#  checkpoint: 'checkpoint_epoch_140.pth'  # for 'single' mode
+  checkpoint: 'checkpoints/checkpoint_epoch_140.pth'  # for 'single' mode
   checkpoints_dir: 'checkpoints'  # for 'all' model
   threshold: 0.2  # confidence filter
