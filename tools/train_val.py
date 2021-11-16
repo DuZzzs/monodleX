@@ -42,7 +42,7 @@ def main():
     train_loader, test_loader  = build_dataloader(cfg['dataset'])
 
     # build model
-    model = build_model(cfg['model'])
+    model = build_model(cfg)
 
     if args.evaluate_only:
         logger.info('###################  Evaluation Only  ##################')

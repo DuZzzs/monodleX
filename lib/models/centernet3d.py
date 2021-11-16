@@ -2,6 +2,7 @@ import os
 import cv2
 import torch
 import torch.nn as nn
+from torch.nn import functional as F
 import numpy as np
 
 from lib.backbones import dla
@@ -22,6 +23,10 @@ class CenterNet3D(nn.Module):
         """
         assert downsample in [4, 8, 16, 32]
         super().__init__()
+
+        self.consider_outside_objs = False
+        if cfg['dataset']['type'] == 'KITTI_v2':
+            self.consider_outside_objs = True
 
         self.heads = {'heatmap': num_class, 'offset_2d': 2, 'size_2d' :2, 'depth': 2, 'offset_3d': 2, 'size_3d':3, 'heading': 24}
 
@@ -62,15 +67,84 @@ class CenterNet3D(nn.Module):
                 self.fill_fc_weights(fc)
 
             self.__setattr__(head, fc)
+        # edge feature fusion
+        self.bn_momentum = 0.1
+        self.edge_fusion_kernel_size = 3
+        if self.consider_outside_objs:
+            self.trunc_heatmap_conv = nn.Sequential(
+                nn.Conv1d(self.head_conv, self.head_conv, kernel_size=self.edge_fusion_kernel_size,
+                          padding=self.edge_fusion_kernel_size // 2, padding_mode='replicate'),
+                nn.BatchNorm1d(self.head_conv, momentum=self.bn_momentum),
+                nn.Conv1d(self.head_conv, self.heads['heatmap'], kernel_size=1),
+            )
 
+            self.trunc_offset3d_conv = nn.Sequential(
+                nn.Conv1d(self.head_conv, self.head_conv, kernel_size=self.edge_fusion_kernel_size,
+                          padding=self.edge_fusion_kernel_size // 2, padding_mode='replicate'),
+                nn.BatchNorm1d(self.head_conv, momentum=self.bn_momentum),
+                nn.Conv1d(self.head_conv, self.heads['offset_3d'], kernel_size=1),
+            )
+            self.trunc_offset2d_conv = nn.Sequential(
+                nn.Conv1d(self.head_conv, self.head_conv, kernel_size=self.edge_fusion_kernel_size,
+                          padding=self.edge_fusion_kernel_size // 2, padding_mode='replicate'),
+                nn.BatchNorm1d(self.head_conv, momentum=self.bn_momentum),
+                nn.Conv1d(self.head_conv, self.heads['offset_2d'], kernel_size=1),
+            )
+        self.continue_heads = ['heatmap', 'offset_2d', 'offset_3d']
+        self.resolution = np.array([1280, 384])  # W * H
+        self.output_width = self.resolution[0] // downsample
+        self.output_height = self.resolution[1] // downsample
 
-    def forward(self, input):
+    def forward(self, input, targets=None):
+        b, c, h, w = input.shape
         feat = self.backbone(input)
         if self.use_dlaup:
             feat = self.neck(feat[self.first_level:])
 
         ret = {}
-        for head in self.heads:
+        feature_cls = self.__getattr__('heatmap')[:-1](feat)
+        output_cls = self.__getattr__('heatmap')[-1](feature_cls)
+        feature_offset2d_reg = self.__getattr__('offset_2d')[:-1](feat)
+        output_offset2d_reg = self.__getattr__('offset_2d')[-1](feature_offset2d_reg)
+        feature_offset3d_reg = self.__getattr__('offset_3d')[:-1](feat)
+        output_offset3d_reg = self.__getattr__('offset_3d')[-1](feature_offset3d_reg)
+        if self.consider_outside_objs:
+            edge_indices = targets['edge_indices']  # (b,k,2)
+            edge_lens = targets['edge_len']  # (b,)
+            # normalize
+            grid_edge_indices = edge_indices.view(b, -1, 1, 2).float()
+            grid_edge_indices[..., 0] = grid_edge_indices[..., 0] / (
+                        self.output_width - 1) * 2 - 1  # 0~1 -> 0~2 -> -1~1
+            grid_edge_indices[..., 1] = grid_edge_indices[..., 1] / (self.output_height - 1) * 2 - 1
+
+            # apply edge fusion for both offset2d, offset3d, heatmap
+            feature_for_fusion = torch.cat((feature_cls, feature_offset2d_reg, feature_offset3d_reg), dim=1)
+            edge_features = F.grid_sample(feature_for_fusion, grid_edge_indices, align_corners=True).squeeze(-1)
+            # Each edge is different and processed separately, and its dimensions are still not uniform after concat.
+            # The above method samples 00 multiple times, which is problematic
+            # for k in range(b):
+            #     edge_indices
+
+            edge_cls_feature = edge_features[:, :self.head_conv, ...]
+            edge_offset2d_feature = edge_features[:, self.head_conv:self.head_conv * 2, ...]
+            edge_offset3d_feature = edge_features[:, self.head_conv * 2:, ...]
+            edge_cls_output = self.trunc_heatmap_conv(edge_cls_feature)
+            edge_offset2d_output = self.trunc_offset2d_conv(edge_offset2d_feature)
+            edge_offset3d_output = self.trunc_offset3d_conv(edge_offset3d_feature)
+            for k in range(b):
+                edge_indice_k = edge_indices[k, :edge_lens[k]]  # remove repeated points
+                output_cls[k, :, edge_indice_k[:, 1], edge_indice_k[:, 0]] += edge_cls_output[k, :, :edge_lens[k]]
+                output_offset2d_reg[k, :, edge_indice_k[:, 1], edge_indice_k[:, 0]] += edge_offset2d_output[k, :,
+                                                                                       :edge_lens[k]]
+                output_offset3d_reg[k, :, edge_indice_k[:, 1], edge_indice_k[:, 0]] += edge_offset3d_output[k, :,
+                                                                                       :edge_lens[k]]
+        ret['heatmap'] = output_cls
+        ret['offset_2d'] = output_offset2d_reg
+        ret['offset_3d'] = output_offset3d_reg
+
+        for i, head in enumerate(self.heads):
+            if head in self.continue_heads:
+                continue
             ret[head] = self.__getattr__(head)(feat)
 
         return ret

@@ -101,7 +101,7 @@ class Trainer(object):
 
             # train one batch
             self.optimizer.zero_grad()
-            outputs = self.model(inputs)
+            outputs = self.model(inputs, targets)
             total_loss, stats_batch = compute_centernet3d_loss(outputs, targets)
             total_loss.backward()
             self.optimizer.step()

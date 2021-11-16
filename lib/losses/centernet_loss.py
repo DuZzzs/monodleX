@@ -12,10 +12,14 @@ eps = 1e-6
 def compute_centernet3d_loss(input, target):
     stats_dict = {}
 
+    edge_fusion = False
+    if 'edge_len' in target.keys():
+        edge_fusion = True
+
     seg_loss = compute_segmentation_loss(input, target)
-    offset2d_loss = compute_offset2d_loss(input, target)
+    offset2d_loss = compute_offset2d_loss(input, target, edge_fusion=edge_fusion)
     size2d_loss = compute_size2d_loss(input, target)
-    offset3d_loss = compute_offset3d_loss(input, target)
+    offset3d_loss = compute_offset3d_loss(input, target, edge_fusion=edge_fusion)
     depth_loss = compute_depth_loss(input, target)
     size3d_loss = compute_size3d_loss(input, target)
     heading_loss = compute_heading_loss(input, target)
@@ -49,15 +53,23 @@ def compute_size2d_loss(input, target):
         size2d_loss = torch.tensor([0.0]).to(size2d_input.device)
     return size2d_loss
 
-def compute_offset2d_loss(input, target):
+def compute_offset2d_loss(input, target, edge_fusion=False):
     # compute offset2d loss
     offset2d_input = extract_input_from_tensor(input['offset_2d'], target['indices'], target['mask_2d'])
     offset2d_target = extract_target_from_tensor(target['offset_2d'], target['mask_2d'])
-    if(target['mask_2d'].sum() > 0):
+    if edge_fusion:
+        trunc_mask = extract_target_from_tensor(target['trunc_mask'], target['mask_2d']).bool()
+        offset2d_loss = F.l1_loss(offset2d_input, offset2d_target, reduction='none').sum(dim=1)
+        # use different loss functions for inside and outside objects
+        trunc_offset_loss = torch.log(1 + offset2d_loss[trunc_mask]).sum() / torch.clamp(trunc_mask.sum() + eps, min=1)
+        offset2d_loss = offset2d_loss[~trunc_mask].mean()
+        return trunc_offset_loss + offset2d_loss
+    elif(target['mask_2d'].sum() > 0):
         offset2d_loss = F.l1_loss(offset2d_input, offset2d_target, reduction='mean')
+        return offset2d_loss
     else:
         offset2d_loss = torch.tensor([0.0]).to(offset2d_input.device)
-    return offset2d_loss
+        return offset2d_loss
 
 
 def compute_depth_loss(input, target):
@@ -72,19 +84,18 @@ def compute_depth_loss(input, target):
     return depth_loss
 
 
-def compute_offset3d_loss(input, target):
+def compute_offset3d_loss(input, target, edge_fusion=False):
     offset3d_input = extract_input_from_tensor(input['offset_3d'], target['indices'], target['mask_3d'])
     offset3d_target = extract_target_from_tensor(target['offset_3d'], target['mask_3d'])
-    offset3d_loss = F.l1_loss(offset3d_input, offset3d_target, reduction='mean')
     if target['mask_3d'].sum() > 0:
-        # if edge_fusion:
-        #     trunc_mask = extract_target_from_tensor(target['trunc_mask'], target['mask_3d']).bool()
-        #     offset_3d_loss = F.l1_loss(offset3d_input, offset3d_target, reduction='none').sum(dim=1)
-        #     trunc_offset3d_loss = torch.log(1 + offset_3d_loss[trunc_mask]).sum() / torch.clamp(trunc_mask.sum(), min=1)
-        #     offset_3d_loss = offset_3d_loss[~trunc_mask].mean()
-        #     offset3d_loss = trunc_offset3d_loss + offset_3d_loss
-        # else:
-        offset3d_loss = F.l1_loss(offset3d_input, offset3d_target, reduction='mean')
+        if edge_fusion:
+            trunc_mask = extract_target_from_tensor(target['trunc_mask'], target['mask_3d']).bool()
+            offset_3d_loss = F.l1_loss(offset3d_input, offset3d_target, reduction='none').sum(dim=1)
+            trunc_offset3d_loss = torch.log(1 + offset_3d_loss[trunc_mask]).sum() / torch.clamp(trunc_mask.sum(), min=1)
+            offset_3d_loss = offset_3d_loss[~trunc_mask].mean()
+            offset3d_loss = trunc_offset3d_loss + offset_3d_loss
+        else:
+            offset3d_loss = F.l1_loss(offset3d_input, offset3d_target, reduction='mean')
     else:
         offset3d_loss = torch.tensor([0.0]).to(offset3d_input.device)
     return offset3d_loss

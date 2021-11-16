@@ -356,6 +356,89 @@ def affine_transform(pt, t):
     return new_pt[:2]
 
 
+def approx_proj_center(proj_center, surface_centers, img_size):
+    """
+    process：
+        1. Calculate the line between the center point of box2d and
+        the center point of the projection, and the intersection
+        point x_I with the edge, there may be multiple intersection points.
+        2. Choose the intersection point closest to the projection center point as the selected x_I.
+    :param proj_center:
+    :param surface_centers:
+    :param img_size:
+    :return:
+    """
+    # surface_inside, in original image size
+    img_w, img_h = img_size
+    # Make sure the center point of box2d is inside the image
+    surface_center_inside_img = (surface_centers[:, 0] >= 0) & (surface_centers[:, 1] >= 0) & \
+                                (surface_centers[:, 0] <= img_w - 1) & (surface_centers[:, 1] <= img_h - 1)
+
+    if surface_center_inside_img.sum() > 0:
+        target_surface_center = surface_centers[surface_center_inside_img.argmax()]
+        # y = ax + b
+        a, b = np.polyfit([proj_center[0], target_surface_center[0]], [proj_center[1], target_surface_center[1]], 1)
+        valid_intersects = []
+        valid_edge = []
+
+        left_y = b
+        # When the corner point between the straight line and the
+        # y-axis is in the effective image, the effective edge point is(0, left_y)
+        if (0 <= left_y <= img_h - 1):
+            valid_intersects.append(np.array([0, left_y]))
+            valid_edge.append(0)
+
+        right_y = (img_w - 1) * a + b
+        if (0 <= right_y <= img_h - 1):
+            valid_intersects.append(np.array([img_w - 1, right_y]))
+            valid_edge.append(1)
+
+        top_x = -b / a
+        if (0 <= top_x <= img_w - 1):
+            valid_intersects.append(np.array([top_x, 0]))
+            valid_edge.append(2)
+
+        bottom_x = (img_h - 1 - b) / a
+        if (0 <= bottom_x <= img_w - 1):
+            valid_intersects.append(np.array([bottom_x, img_h - 1]))
+            valid_edge.append(3)
+
+        valid_intersects = np.stack(valid_intersects)
+        min_idx = np.argmin(np.linalg.norm(valid_intersects - proj_center.reshape(1, 2), axis=1))
+
+        return valid_intersects[min_idx], valid_edge[min_idx]
+    else:
+        return None
+
+def ellip_gaussian2D(shape, sigma_x, sigma_y):
+    m, n = [(ss - 1.) / 2. for ss in shape]
+    y, x = np.ogrid[-m:m + 1, -n:n + 1]
+
+    # generate meshgrid
+    h = np.exp(-(x * x) / (2 * sigma_x * sigma_x) - (y * y) / (2 * sigma_y * sigma_y))
+    h[h < np.finfo(h.dtype).eps * h.max()] = 0
+
+    return h
+
+def draw_umich_gaussian_2D(heatmap, center, radius_x, radius_y, k=1):
+    diameter_x, diameter_y = 2 * radius_x + 1, 2 * radius_y + 1
+    gaussian = ellip_gaussian2D((diameter_y, diameter_x), sigma_x=diameter_x / 6, sigma_y=diameter_y / 6)
+
+    x, y = int(center[0]), int(center[1])
+    height, width = heatmap.shape[0:2]
+
+    left, right = min(x, radius_x), min(width - x, radius_x + 1)
+    top, bottom = min(y, radius_y), min(height - y, radius_y + 1)
+
+    masked_heatmap = heatmap[y - top:y + bottom, x - left:x + right]
+    masked_gaussian = gaussian[radius_y - top:radius_y + bottom, radius_x - left:radius_x + right]
+
+    if min(masked_gaussian.shape) > 0 and min(masked_heatmap.shape) > 0:
+        np.maximum(masked_heatmap, masked_gaussian * k, out=masked_heatmap)
+
+    return heatmap
+
+
 if __name__ == '__main__':
     from lib.datasets.kitti.kitti_dataset import KITTI_Dataset
     cfg = {'root_dir': '../../../data'}

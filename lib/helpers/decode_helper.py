@@ -90,12 +90,12 @@ def extract_dets_from_outputs(outputs, K=50):
 
     offset_2d = _transpose_and_gather_feat(offset_2d, inds)
     offset_2d = offset_2d.view(batch, K, 2)
-    xs2d = xs.view(batch, K, 1) + offset_2d[:, :, 0:1]
+    xs2d = xs.view(batch, K, 1) + offset_2d[:, :, 0:1]  # x_c / x_I + offset2d = x_b
     ys2d = ys.view(batch, K, 1) + offset_2d[:, :, 1:2]
 
     offset_3d = _transpose_and_gather_feat(offset_3d, inds)
     offset_3d = offset_3d.view(batch, K, 2)
-    xs3d = xs.view(batch, K, 1) + offset_3d[:, :, 0:1]
+    xs3d = xs.view(batch, K, 1) + offset_3d[:, :, 0:1]  # x_I / x_c + offset_error = x_c
     ys3d = ys.view(batch, K, 1) + offset_3d[:, :, 1:2]
 
     heading = _transpose_and_gather_feat(heading, inds)

@@ -67,7 +67,9 @@ class Tester(object):
         for batch_idx, (inputs, _, info) in enumerate(self.dataloader):
             # load evaluation data and move data to GPU.
             inputs = inputs.to(self.device)
-            outputs = self.model(inputs)
+            for key in info.keys():
+                info[key] = info[key].to(self.device)
+            outputs = self.model(inputs, info)
             dets = extract_dets_from_outputs(outputs=outputs, K=self.max_objs)
             dets = dets.detach().cpu().numpy()
 
@@ -96,7 +98,7 @@ class Tester(object):
         os.makedirs(output_dir, exist_ok=True)
 
         for img_id in results.keys():
-            if self.dataset_type == 'KITTI':
+            if self.dataset_type == 'KITTI' or self.dataset_type == 'KITTI_v2':
                 output_path = os.path.join(output_dir, '{:06d}.txt'.format(img_id))
             else:
                 os.makedirs(os.path.join(output_dir, self.dataloader.dataset.get_sensor_modality(img_id)), exist_ok=True)
