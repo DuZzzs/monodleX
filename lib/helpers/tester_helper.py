@@ -10,13 +10,14 @@ from lib.helpers.decode_helper import decode_detections
 
 
 class Tester(object):
-    def __init__(self, cfg, model, dataloader, logger, eval=False):
+    def __init__(self, cfg, model, dataloader, logger, eval=False, log_dir="work_dirs/"):
         self.cfg = cfg
         self.model = model
         self.dataloader = dataloader
         self.max_objs = dataloader.dataset.max_objs    # max objects per images, defined in dataset
         self.class_name = dataloader.dataset.class_name
-        self.output_dir = './outputs'
+        self.log_dir = log_dir
+        self.output_dir = os.path.join(log_dir, './outputs')
         self.dataset_type = cfg.get('type', 'KITTI')
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.logger = logger
@@ -28,10 +29,10 @@ class Tester(object):
 
         # test a single checkpoint
         if self.cfg['mode'] == 'single':
-            assert os.path.exists(self.cfg['checkpoint'])
+            assert os.path.exists(os.path.join(self.log_dir, self.cfg['checkpoint']))
             load_checkpoint(model=self.model,
                             optimizer=None,
-                            filename=self.cfg['checkpoint'],
+                            filename=os.path.join(self.log_dir, self.cfg['checkpoint']),
                             map_location=self.device,
                             logger=self.logger)
             self.model.to(self.device)
@@ -41,8 +42,8 @@ class Tester(object):
         # test all checkpoints in the given dir
         if self.cfg['mode'] == 'all':
             checkpoints_list = []
-            for _, _, files in os.walk(self.cfg['checkpoints_dir']):
-                checkpoints_list = [os.path.join(self.cfg['checkpoints_dir'], f) for f in files if f.endswith(".pth")]
+            for _, _, files in os.walk(os.path.join(self.log_dir, self.cfg['checkpoints_dir'])):
+                checkpoints_list = [os.path.join(self.log_dir, self.cfg['checkpoints_dir'], f) for f in files if f.endswith(".pth")]
             checkpoints_list.sort(key=os.path.getmtime)
 
             for checkpoint in checkpoints_list:
@@ -86,7 +87,7 @@ class Tester(object):
 
         # save the result for evaluation.
         self.logger.info('==> Saving ...')
-        self.save_results(results)
+        self.save_results(results, output_dir=self.output_dir)
 
 
 
@@ -115,5 +116,5 @@ class Tester(object):
 
 
     def evaluate(self):
-        self.dataloader.dataset.eval(results_dir='./outputs/data', logger=self.logger)
+        self.dataloader.dataset.eval(results_dir=os.path.join(self.log_dir, './outputs/data'), logger=self.logger)
 

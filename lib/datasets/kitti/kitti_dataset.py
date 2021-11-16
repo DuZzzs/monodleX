@@ -42,11 +42,13 @@ class KITTI_Dataset(data.Dataset):
 
         # data split loading
         assert self.split in ['train', 'val', 'trainval', 'test']
-        self.split_file = os.path.join(self.root_dir, 'ImageSets', self.split + '.txt')
+        flag = 'training' if self.split == 'train' else 'training'
+        self.split_file = os.path.join(self.root_dir, flag, 'ImageSets', self.split + '.txt')
         self.idx_list = [x.strip() for x in open(self.split_file).readlines()]
 
         # path configuration
-        self.data_dir = os.path.join(self.root_dir, 'object', 'testing' if split == 'test' else 'training')
+        # self.data_dir = os.path.join(self.root_dir, 'object', 'testing' if split == 'test' else 'training')
+        self.data_dir = os.path.join(self.root_dir, 'testing' if split == 'test' else 'training')
         self.image_dir = os.path.join(self.data_dir, 'image_2')
         self.depth_dir = os.path.join(self.data_dir, 'depth')
         self.calib_dir = os.path.join(self.data_dir, 'calib')
@@ -185,8 +187,8 @@ class KITTI_Dataset(data.Dataset):
         size_3d = np.zeros((self.max_objs, 3), dtype=np.float32)
         offset_3d = np.zeros((self.max_objs, 2), dtype=np.float32)
         indices = np.zeros((self.max_objs), dtype=np.int64)
-        mask_2d = np.zeros((self.max_objs), dtype=np.uint8)
-        mask_3d = np.zeros((self.max_objs), dtype=np.uint8)
+        mask_2d = np.zeros((self.max_objs), dtype=np.int64)
+        mask_3d = np.zeros((self.max_objs), dtype=np.int64)
         object_num = len(objects) if len(objects) < self.max_objs else self.max_objs
         for i in range(object_num):
             # filter objects by writelist

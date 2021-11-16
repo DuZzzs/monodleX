@@ -2,4 +2,8 @@
 
 CONFIG=$1
 
-python ../../tools/train_val.py --config ${CONFIG}
+# train
+#python ../../tools/train_val.py --config ${CONFIG}
+
+# test
+python ../../tools/train_val.py --config test_kitti.yaml --e

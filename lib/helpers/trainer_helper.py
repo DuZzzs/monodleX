@@ -20,7 +20,8 @@ class Trainer(object):
                  test_loader,
                  lr_scheduler,
                  warmup_lr_scheduler,
-                 logger):
+                 logger,
+                 log_dir):
         self.cfg = cfg
         self.model = model
         self.optimizer = optimizer
@@ -31,6 +32,7 @@ class Trainer(object):
         self.logger = logger
         self.epoch = 0
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.log_dir = log_dir
 
         # loading pretrain/resume model
         if cfg.get('pretrain_model'):
@@ -50,7 +52,10 @@ class Trainer(object):
                                          logger=self.logger)
             self.lr_scheduler.last_epoch = self.epoch - 1
 
-        self.gpu_ids = list(map(int, cfg['gpu_ids'].split(',')))
+        if isinstance(cfg['gpu_ids'], int):
+            self.gpu_ids = [cfg['gpu_ids']]
+        else:
+            self.gpu_ids = list(map(int, cfg['gpu_ids'].split(",")))
         self.model = torch.nn.DataParallel(model, device_ids=self.gpu_ids).to(self.device)
 
 
@@ -76,8 +81,8 @@ class Trainer(object):
 
             # save trained model
             if (self.epoch % self.cfg['save_frequency']) == 0:
-                os.makedirs('checkpoints', exist_ok=True)
-                ckpt_name = os.path.join('checkpoints', 'checkpoint_epoch_%d' % self.epoch)
+                os.makedirs(os.path.join(self.log_dir, 'checkpoints'), exist_ok=True)
+                ckpt_name = os.path.join(self.log_dir, 'checkpoints', 'checkpoint_epoch_%d' % self.epoch)
                 save_checkpoint(get_checkpoint_state(self.model, self.optimizer, self.epoch), ckpt_name)
 
             progress_bar.update()
@@ -87,6 +92,7 @@ class Trainer(object):
 
     def train_one_epoch(self):
         self.model.train()
+        loss_items = {}
         progress_bar = tqdm.tqdm(total=len(self.train_loader), leave=(self.epoch+1 == self.cfg['max_epoch']), desc='iters')
         for batch_idx, (inputs, targets, _) in enumerate(self.train_loader):
             inputs = inputs.to(self.device)
@@ -99,10 +105,26 @@ class Trainer(object):
             total_loss, stats_batch = compute_centernet3d_loss(outputs, targets)
             total_loss.backward()
             self.optimizer.step()
+            self.update_loss_item(loss_items, stats_batch)
 
             progress_bar.update()
         progress_bar.close()
+        self.print_loss_items(loss_items)
 
+    def update_loss_item(self, loss_items, stats_batch):
+        # cache loss item of this batch
+        if not loss_items:
+            for idx, key in enumerate(stats_batch.keys()):
+                loss_items[key] = 0.0
+        for idx, key in enumerate(stats_batch.keys()):
+            loss_items[key] += stats_batch[key]
+
+    def print_loss_items(self, loss_items):
+        print(end="\n")
+        num_batch = len(self.train_loader)
+        for key, value in loss_items.items():
+            self.logger.info("{} loss: {}, ".format(key, value / num_batch))
+        print(end="\n")
 
 
 
