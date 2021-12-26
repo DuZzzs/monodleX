@@ -4,6 +4,9 @@ import torch
 import torch.nn as nn
 import numpy as np
 
+import sys
+# sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
+
 from lib.backbones import dla
 from lib.backbones.dlaup import DLAUp
 from lib.backbones.hourglass import get_large_hourglass_net
@@ -49,7 +52,8 @@ class CenterNet3D(nn.Module):
 
     def forward(self, input):
         feat = self.backbone(input)
-        feat = self.neck(feat[self.first_level:])
+        # feat = self.neck(feat[self.first_level:])
+        feat = self.neck(feat)
 
         ret = {}
         for head in self.heads:

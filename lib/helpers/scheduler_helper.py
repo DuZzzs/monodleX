@@ -1,6 +1,9 @@
 import torch.nn as nn
 import torch.optim.lr_scheduler as lr_sched
 import math
+import sys, os
+# sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
+# print(sys.path)
 
 
 def build_lr_scheduler(cfg, optimizer, last_epoch):
@@ -88,8 +91,7 @@ class LinearWarmupLR(lr_sched._LRScheduler):
                 for base_lr in self.base_lrs]
 
 
-
-if __name__ == '__main__':
+def check_lr_scheduler():
     # testing
     import torch.optim as optim
     from lib.models.centernet3d import CenterNet3D
@@ -114,10 +116,12 @@ if __name__ == '__main__':
     # vis
     fig = plt.figure()
     ax1 = fig.add_subplot(121)
-    ax1.scatter(batch_cosine, lr_cosine, c = 'r',marker = 'o')
+    ax1.scatter(batch_cosine, lr_cosine, c='r', marker='o')
     ax2 = fig.add_subplot(122)
-    ax2.scatter(batch_linear, lr_linear, c = 'r',marker = 'o')
+    ax2.scatter(batch_linear, lr_linear, c='r', marker='o')
     plt.show()
+    plt.savefig("lr.jpg")
 
 
-
+if __name__ == '__main__':
+    check_lr_scheduler()

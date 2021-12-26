@@ -114,10 +114,18 @@ def draw_projected_box3d(image, corners3d, color=(255, 255, 255), thickness=1):
     '''
 
     corners3d = corners3d.astype(np.int32)
+    head_color = (0, 255, 0)
     for k in range(0, 4):
         i, j = k, (k + 1) % 4
-        cv2.line(image, (corners3d[i, 0], corners3d[i, 1]), (corners3d[j, 0], corners3d[j, 1]), color, thickness, lineType=cv2.LINE_AA)
+        if i == 0:
+            cv2.line(image, (corners3d[i, 0], corners3d[i, 1]), (corners3d[j, 0], corners3d[j, 1]), head_color, thickness,
+                     lineType=cv2.LINE_AA)
+            cv2.putText(image, str(i), (corners3d[i, 0], corners3d[i, 1]), cv2.FONT_HERSHEY_SIMPLEX, 1, head_color, 2)
+        else:
+            cv2.line(image, (corners3d[i, 0], corners3d[i, 1]), (corners3d[j, 0], corners3d[j, 1]), color, thickness, lineType=cv2.LINE_AA)
+            cv2.putText(image, str(i), (corners3d[i, 0], corners3d[i, 1]), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
         i, j = k + 4, (k + 1) % 4 + 4
+        cv2.putText(image, str(i), (corners3d[i, 0], corners3d[i, 1]), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
         cv2.line(image, (corners3d[i, 0], corners3d[i, 1]), (corners3d[j, 0], corners3d[j, 1]), color, thickness, lineType=cv2.LINE_AA)
         i, j = k, k + 4
         cv2.line(image, (corners3d[i, 0], corners3d[i, 1]), (corners3d[j, 0], corners3d[j, 1]), color, thickness, lineType=cv2.LINE_AA)

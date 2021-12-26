@@ -26,7 +26,7 @@ def decode_detections(dets, info, calibs, cls_mean_size, threshold):
             y = dets[i, j, 3] * info['bbox_downsample_ratio'][i][1]
             w = dets[i, j, 4] * info['bbox_downsample_ratio'][i][0]
             h = dets[i, j, 5] * info['bbox_downsample_ratio'][i][1]
-            bbox = [x-w/2, y-h/2, x+w/2, y+h/2]
+            bbox = [x-w/2, y-h/2, x+w/2, y+h/2]  # -> xyxy
 
             # 3d bboxs decoding
             # depth decoding
@@ -46,6 +46,7 @@ def decode_detections(dets, info, calibs, cls_mean_size, threshold):
             alpha = get_heading_angle(dets[i, j, 7:31])
             ry = calibs[i].alpha2ry(alpha, x3d)
 
+            # print("score: {}, sigma: {}, final_score: {}".format(score, dets[i, j, -1], score*dets[i, j, -1]))
             score = score * dets[i, j, -1]
 
             ##### generate 2d bbox using 3d bbox
