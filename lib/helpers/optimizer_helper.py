@@ -6,6 +6,7 @@ from torch.optim.optimizer import Optimizer
 def build_optimizer(cfg_optimizer, model):
     weights, biases = [], []
     for name, param in model.named_parameters():
+    # for name, param in model.parameters():  # for dist 这么写吗？？
         if 'bias' in name:
             biases += [param]
         else:

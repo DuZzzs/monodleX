@@ -15,6 +15,8 @@ def get_checkpoint_state(model=None, optimizer=None, epoch=None):
     if model is not None:
         if isinstance(model, torch.nn.DataParallel):
             model_state = model_state_to_cpu(model.module.state_dict())
+        elif isinstance(model, torch.nn.parallel.DistributedDataParallel):
+            model_state = model_state_to_cpu(model.module.state_dict())
         else:
             model_state = model.state_dict()
     else:
@@ -30,14 +32,23 @@ def save_checkpoint(state, filename):
 
 def load_checkpoint(model, optimizer, filename, map_location, logger=None):
     if os.path.isfile(filename):
-        logger.info("==> Loading from checkpoint '{}'".format(filename))
+        if logger:
+            logger.info("==> Loading from checkpoint '{}'".format(filename))
+        else:
+            print("==> Loading from checkpoint '{}'".format(filename))
         checkpoint = torch.load(filename, map_location)
-        epoch = checkpoint.get('epoch', -1)
+        # epoch = checkpoint.get('epoch', -1)
+        checkpoint_dir, pth_file = os.path.split(filename)
+        epoch = int(pth_file.split("_")[-1].split(".")[0])
+
         if model is not None and checkpoint['model_state'] is not None:
             model.load_state_dict(checkpoint['model_state'])
         if optimizer is not None and checkpoint['optimizer_state'] is not None:
             optimizer.load_state_dict(checkpoint['optimizer_state'])
-        logger.info("==> Done")
+        if logger:
+            logger.info("==> Done")
+        else:
+            print("==> Done")
     else:
         raise FileNotFoundError
 

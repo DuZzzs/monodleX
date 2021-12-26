@@ -1,16 +1,3 @@
-### 更新
-- 在kitti上测试了作者的预训练模型结果。见[kitti_pretrain_res](./docs/kitti_pretrain_res.md)
-
-### 使用
-
-- 使用作者提供的预训练模型在kitti上进行测试：
-```angular2html
-# 新建文件夹，将预训练模型放在work_dirs/kitti_debug/checkpoints/kitti_epoch_140.pth
-cd experiments/example
-bash test.sh
-```
-测试结果见[kitti_pretrain_res](./docs/kitti_pretrain_res.md)
-
 
 
 # Delving into Localization Errors for Monocular 3D Detection

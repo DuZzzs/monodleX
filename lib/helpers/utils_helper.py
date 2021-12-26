@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import logging
 import random
+import torch.distributed as dist
 
 def create_logger(log_file, rank=0):
     log_format = '%(asctime)s  %(levelname)5s  %(message)s'
@@ -24,3 +25,6 @@ def set_random_seed(seed):
 
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
+
+def cleanup():
+    dist.destroy_process_group()

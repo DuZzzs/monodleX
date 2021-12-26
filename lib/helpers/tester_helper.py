@@ -10,7 +10,7 @@ from lib.helpers.decode_helper import decode_detections
 
 
 class Tester(object):
-    def __init__(self, cfg, model, dataloader, logger, eval=False, log_dir=""):
+    def __init__(self, cfg, model, dataloader, logger, eval=False, log_dir="", vis_res=False):
         self.cfg = cfg
         self.model = model
         self.dataloader = dataloader
@@ -22,6 +22,7 @@ class Tester(object):
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.logger = logger
         self.eval = eval
+        self.vis_res = vis_res
 
 
     def test(self):
@@ -54,6 +55,8 @@ class Tester(object):
                                 logger=self.logger)
                 self.model.to(self.device)
                 self.inference()
+                # if self.vis_res:
+                #     self.draw_box()
                 self.evaluate()
 
 
@@ -96,7 +99,9 @@ class Tester(object):
         os.makedirs(output_dir, exist_ok=True)
 
         for img_id in results.keys():
+            scale = 1
             if self.dataset_type == 'KITTI':
+                scale = 1
                 output_path = os.path.join(output_dir, '{:06d}.txt'.format(img_id))
             else:
                 os.makedirs(os.path.join(output_dir, self.dataloader.dataset.get_sensor_modality(img_id)), exist_ok=True)

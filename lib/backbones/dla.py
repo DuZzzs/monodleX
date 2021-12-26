@@ -31,7 +31,7 @@ class BasicBlock(nn.Module):
                                stride=1, padding=dilation,
                                bias=False, dilation=dilation)
         self.bn2 = BatchNorm(planes)
-        self.stride = stride
+        # self.stride = stride
 
     def forward(self, x, residual=None):
         if residual is None:
@@ -68,7 +68,7 @@ class Bottleneck(nn.Module):
                                kernel_size=1, bias=False)
         self.bn3 = BatchNorm(planes)
         self.relu = nn.ReLU(inplace=True)
-        self.stride = stride
+        # self.stride = stride
 
     def forward(self, x, residual=None):
         if residual is None:
@@ -112,7 +112,7 @@ class BottleneckX(nn.Module):
                                kernel_size=1, bias=False)
         self.bn3 = BatchNorm(planes)
         self.relu = nn.ReLU(inplace=True)
-        self.stride = stride
+        # self.stride = stride
 
     def forward(self, x, residual=None):
         if residual is None:
@@ -183,7 +183,7 @@ class Tree(nn.Module):
             self.root = Root(root_dim, out_channels, root_kernel_size,
                              root_residual)
         self.level_root = level_root
-        self.root_dim = root_dim
+        # self.root_dim = root_dim
         self.downsample = None
         self.project = None
         self.levels = levels
@@ -219,7 +219,7 @@ class DLA(nn.Module):
         super(DLA, self).__init__()
         self.channels = channels
         self.return_levels = return_levels
-        self.num_classes = num_classes
+        # self.num_classes = num_classes
         self.base_layer = nn.Sequential(
             nn.Conv2d(3, channels[0], kernel_size=7, stride=1,
                       padding=3, bias=False),
@@ -239,9 +239,9 @@ class DLA(nn.Module):
         self.level5 = Tree(levels[5], block, channels[4], channels[5], 2,
                            level_root=True, root_residual=residual_root)
 
-        self.avgpool = nn.AvgPool2d(pool_size)
-        self.fc = nn.Conv2d(channels[-1], num_classes, kernel_size=1,
-                            stride=1, padding=0, bias=True)
+        # self.avgpool = nn.AvgPool2d(pool_size)
+        # self.fc = nn.Conv2d(channels[-1], num_classes, kernel_size=1,
+        #                     stride=1, padding=0, bias=True)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -286,28 +286,32 @@ class DLA(nn.Module):
         for i in range(6):
             x = getattr(self, 'level{}'.format(i))(x)
             y.append(x)
+        # if self.return_levels:
+        #     return y
         if self.return_levels:
-            return y
+            first_level = 2  # for dist, this value comes from centernet3d.py self.first_level.
+            return y[first_level:]
         else:
-            x = self.avgpool(x)
-            x = self.fc(x)
-            x = x.view(x.size(0), -1)
-
-            return x
+            raise NotImplementedError
+            # x = self.avgpool(x)
+            # x = self.fc(x)
+            # x = x.view(x.size(0), -1)
+            #
+            # return x
 
     def load_pretrained_model(self, data='imagenet', name='dla34', hash='ba72cf86'):
-        fc = self.fc
+        # fc = self.fc
         if name.endswith('.pth'):
             model_weights = torch.load(data + name)
         else:
             model_url = get_model_url(data, name, hash)
             model_weights = model_zoo.load_url(model_url)
         num_classes = len(model_weights[list(model_weights.keys())[-1]])
-        self.fc = nn.Conv2d(
-            self.channels[-1], num_classes,
-            kernel_size=1, stride=1, padding=0, bias=True)
-        self.load_state_dict(model_weights)
-        self.fc = fc
+        # self.fc = nn.Conv2d(
+        #     self.channels[-1], num_classes,
+        #     kernel_size=1, stride=1, padding=0, bias=True)
+        self.load_state_dict(model_weights, strict=False)
+        # self.fc = fc
 
 
 def dla34(pretrained=False, **kwargs):  # DLA-34
