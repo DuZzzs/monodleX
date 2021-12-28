@@ -1,5 +1,5 @@
 random_seed: 444
-log_dir: 'work_dirs/kitti_res18/'
+log_dir: 'work_dirs/kitti_res18_/'
 
 dataset:
   type: &dataset_type 'KITTI'
@@ -24,7 +24,8 @@ model:
 
 optimizer:
   type: 'adam'
-  lr: 0.00125
+#  lr: 0.00125
+  lr: 0.000625
   weight_decay: 0.00001
 
 lr_scheduler:

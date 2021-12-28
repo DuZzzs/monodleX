@@ -68,6 +68,7 @@ class Trainer(object):
             # reset random seed
             # ref: https://github.com/pytorch/pytorch/issues/5059
             np.random.seed(np.random.get_state()[1][0] + epoch)
+            self.logger.info("epoch: {}".format(epoch))
             # train one epoch
             self.train_one_epoch()
             self.epoch += 1

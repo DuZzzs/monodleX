@@ -356,7 +356,7 @@ def affine_transform(pt, t):
     return new_pt[:2]
 
 
-def approx_proj_center(proj_center, surface_centers, img_size):
+def approx_proj_center(proj_center, surface_centers, left_boundary, right_boundary):
     """
     process：
         1. Calculate the line between the center point of box2d and
@@ -369,10 +369,11 @@ def approx_proj_center(proj_center, surface_centers, img_size):
     :return:
     """
     # surface_inside, in original image size
-    img_w, img_h = img_size
+    left_bound_x, left_bound_y = left_boundary
+    right_bound_x, right_bound_y = right_boundary
     # Make sure the center point of box2d is inside the image
-    surface_center_inside_img = (surface_centers[:, 0] >= 0) & (surface_centers[:, 1] >= 0) & \
-                                (surface_centers[:, 0] <= img_w - 1) & (surface_centers[:, 1] <= img_h - 1)
+    surface_center_inside_img = (surface_centers[:, 0] >= left_bound_x) & (surface_centers[:, 1] >= left_bound_y) & \
+                                (surface_centers[:, 0] <= right_bound_x - 1) & (surface_centers[:, 1] <= right_bound_y - 1)
 
     if surface_center_inside_img.sum() > 0:
         target_surface_center = surface_centers[surface_center_inside_img.argmax()]
@@ -384,23 +385,23 @@ def approx_proj_center(proj_center, surface_centers, img_size):
         left_y = b
         # When the corner point between the straight line and the
         # y-axis is in the effective image, the effective edge point is(0, left_y)
-        if (0 <= left_y <= img_h - 1):
-            valid_intersects.append(np.array([0, left_y]))
+        if (left_bound_y <= left_y <= right_bound_y - 1):
+            valid_intersects.append(np.array([left_bound_x, left_y]))
             valid_edge.append(0)
 
-        right_y = (img_w - 1) * a + b
-        if (0 <= right_y <= img_h - 1):
-            valid_intersects.append(np.array([img_w - 1, right_y]))
+        right_y = (right_bound_x - 1) * a + b
+        if (left_bound_y <= right_y <= right_bound_y - 1):
+            valid_intersects.append(np.array([right_bound_x - 1, right_y]))
             valid_edge.append(1)
 
         top_x = -b / a
-        if (0 <= top_x <= img_w - 1):
-            valid_intersects.append(np.array([top_x, 0]))
+        if (left_bound_x <= top_x <= right_bound_x - 1):
+            valid_intersects.append(np.array([top_x, left_bound_y]))
             valid_edge.append(2)
 
-        bottom_x = (img_h - 1 - b) / a
-        if (0 <= bottom_x <= img_w - 1):
-            valid_intersects.append(np.array([bottom_x, img_h - 1]))
+        bottom_x = (right_bound_y - 1 - b) / a
+        if (left_bound_x <= bottom_x <= right_bound_x - 1):
+            valid_intersects.append(np.array([bottom_x, right_bound_y - 1]))
             valid_edge.append(3)
 
         valid_intersects = np.stack(valid_intersects)
@@ -408,7 +409,7 @@ def approx_proj_center(proj_center, surface_centers, img_size):
 
         return valid_intersects[min_idx], valid_edge[min_idx]
     else:
-        return None
+        return None, None
 
 def ellip_gaussian2D(shape, sigma_x, sigma_y):
     m, n = [(ss - 1.) / 2. for ss in shape]

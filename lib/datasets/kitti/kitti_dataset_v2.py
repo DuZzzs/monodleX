@@ -18,7 +18,7 @@ from lib.datasets.kitti.kitti_utils import affine_transform, approx_proj_center,
 from lib.datasets.kitti.kitti_eval_python.eval import get_official_eval_result
 from lib.datasets.kitti.kitti_eval_python.eval import get_distance_eval_result
 import lib.datasets.kitti.kitti_eval_python.kitti_common as kitti
-from lib.datasets.utils import draw_projected_box3d
+# from lib.datasets.utils import draw_projected_box3d
 
 
 class KITTI_Dataset_v2(data.Dataset):
@@ -89,7 +89,7 @@ class KITTI_Dataset_v2(data.Dataset):
         self.enable_edge_fusion = True
         self.max_edge_length = ((self.features_size[0] + self.features_size[1]) * 2).item()
         self.filter_annos = True
-        self.filter_params = [0.7, 10]
+        self.filter_params = [0.8, 10]
         self.adjust_edge_heatmap = True
         self.edge_heatmap_ratio = 0.5
 
@@ -123,12 +123,13 @@ class KITTI_Dataset_v2(data.Dataset):
             results_str, results_dict = get_official_eval_result(gt_annos, dt_annos, test_id[category])
             logger.info(results_str)
 
-    def get_edge_utils(self, image_size, pad_size, down_ratio=4):
-        img_w, img_h = image_size  # original image size
+    def get_edge_utils(self, left_bound, right_bound, down_ratio=4):
+        left_bound_x, left_bound_y = left_bound
+        right_bound_x, right_bound_y = right_bound
 
         # output feature map boundary
-        x_min, y_min = np.ceil(pad_size[0] / down_ratio), np.ceil(pad_size[1] / down_ratio)
-        x_max, y_max = (pad_size[0] + img_w - 1) // down_ratio, (pad_size[1] + img_h - 1) // down_ratio
+        x_min, y_min = np.ceil(left_bound_x / down_ratio), np.ceil(left_bound_y / down_ratio)
+        x_max, y_max = (right_bound_x - 1) // down_ratio, (right_bound_y - 1) // down_ratio
 
         step = 1
         # boundary idxs
@@ -171,7 +172,7 @@ class KITTI_Dataset_v2(data.Dataset):
         edge_indices_edge = torch.stack((x, y), dim=1)
         edge_indices_edge[:, 0] = torch.clamp(edge_indices_edge[:, 0], x_min)
         edge_indices_edge[:, 1] = torch.clamp(edge_indices_edge[:, 1], y_min)
-        edge_indices_edge = torch.unique(edge_indices_edge, dim=0).flip(dims=[0])  # 这里flip没起作用？
+        edge_indices_edge = torch.unique(edge_indices_edge, dim=0).flip(dims=[0])
         edge_indices.append(edge_indices_edge)
 
         # concatenate
@@ -200,12 +201,12 @@ class KITTI_Dataset_v2(data.Dataset):
                 random_flip_flag = True
                 img = img.transpose(Image.FLIP_LEFT_RIGHT)
 
-            # if np.random.random() < self.random_crop:
-            #     random_crop_flag = True
-            #     aug_scale = np.clip(np.random.randn() * self.scale + 1, 1 - self.scale, 1 + self.scale)
-            #     crop_size = img_size * aug_scale
-            #     center[0] += img_size[0] * np.clip(np.random.randn() * self.shift, -2 * self.shift, 2 * self.shift)
-            #     center[1] += img_size[1] * np.clip(np.random.randn() * self.shift, -2 * self.shift, 2 * self.shift)
+            if np.random.random() < self.random_crop:
+                random_crop_flag = True
+                aug_scale = np.clip(np.random.randn() * self.scale + 1, 1 - self.scale, 1 + self.scale)
+                crop_size = img_size * aug_scale
+                center[0] += img_size[0] * np.clip(np.random.randn() * self.shift, -2 * self.shift, 2 * self.shift)
+                center[1] += img_size[1] * np.clip(np.random.randn() * self.shift, -2 * self.shift, 2 * self.shift)
 
         # add affine transformation for 2d images.
         trans, trans_inv = get_affine_transform(center, crop_size, 0, self.resolution, inv=1)
@@ -219,14 +220,22 @@ class KITTI_Dataset_v2(data.Dataset):
         img = (img - self.mean) / self.std
         img = img.transpose(2, 0, 1)  # C * H * W
 
+        crop_left_top = affine_transform(np.array([0, 0]), trans)  # xmin, ymin
+        crop_right_bottom = affine_transform(img_size, trans)  # xmax, ymax
+        # when image is cropped, box2d should be check whether beyond boundary
+        crop_left_top[0], crop_left_top[1] = max(0, crop_left_top[0]), max(0, crop_left_top[1])
+        crop_right_bottom[0], crop_right_bottom[1] = min(self.resolution[0], crop_right_bottom[0]), min(
+            self.resolution[1], crop_right_bottom[1])
         if self.enable_edge_fusion:
             # generate edge_indices for the edge fusion module
-            pad_size = np.array([0, 0])
+            valid_left_x, valid_left_y = round(crop_left_top[0]), round(crop_left_top[1])
+            valid_right_x, valid_right_y = round(crop_right_bottom[0]), round(crop_right_bottom[1])
             input_edge_indices = np.zeros([self.max_edge_length, 2], dtype=np.int64)
-            edge_indices = self.get_edge_utils(self.resolution, pad_size, down_ratio=self.downsample).numpy()
+            edge_indices = self.get_edge_utils((valid_left_x, valid_left_y), (valid_right_x, valid_right_y),
+                                               down_ratio=self.downsample).numpy()
             input_edge_count = edge_indices.shape[0]
-            input_edge_indices[:edge_indices.shape[0]] = edge_indices
-            input_edge_count = input_edge_count - 1  # (0,0) count twice
+            input_edge_indices[:input_edge_count - 1] = edge_indices[:input_edge_count - 1, :]
+            input_edge_count = input_edge_count - 1
 
         info = {'img_id': index,
                 'img_size': img_size,
@@ -255,7 +264,7 @@ class KITTI_Dataset_v2(data.Dataset):
                 [x1, _, x2, _] = object.box2d
                 object.box2d[0],  object.box2d[2] = img_size[0] - x2, img_size[0] - x1
                 object.alpha = np.pi - object.alpha
-                object.ry = np.pi - object.ry
+                # object.ry = np.pi - object.ry
                 if object.alpha > np.pi:  object.alpha -= 2 * np.pi  # check range
                 if object.alpha < -np.pi: object.alpha += 2 * np.pi
                 if object.ry > np.pi:  object.ry -= 2 * np.pi
@@ -285,7 +294,7 @@ class KITTI_Dataset_v2(data.Dataset):
 
             # filter inappropriate samples
             # if objects[i].level_str == 'UnKnown' or objects[i].pos[-1] < 2:
-            if objects[i].pos[-1] <= 1:
+            if objects[i].pos[-1] <= 0:
                 continue
 
             # ignore the samples beyond the threshold [hard encoding]
@@ -299,6 +308,26 @@ class KITTI_Dataset_v2(data.Dataset):
             # add affine transformation for 2d boxes.
             bbox_2d[:2] = affine_transform(bbox_2d[:2], trans)
             bbox_2d[2:] = affine_transform(bbox_2d[2:], trans)
+            if random_crop_flag:
+                # After crop, the truncation rate should also be recalculated
+                box2d_proj = np.array(calib.corners3d_to_img_boxes(objects[i].generate_corners3d()[None, :])[0][0],
+                                      dtype=np.float32)
+                if random_flip_flag:
+                    box2d_proj_x1, box2d_proj_x2 = box2d_proj[0], box2d_proj[2]
+                    box2d_proj[0] = img_size[0] - box2d_proj_x2
+                    box2d_proj[2] = img_size[0] - box2d_proj_x1
+
+                bbox_2d[::2] = bbox_2d[::2].clip(crop_left_top[0], crop_right_bottom[0])  # Limit to crop img
+                bbox_2d[1::2] = bbox_2d[1::2].clip(crop_left_top[1], crop_right_bottom[1])
+
+                box2d_proj[:2] = affine_transform(box2d_proj[:2], trans)
+                box2d_proj[2:] = affine_transform(box2d_proj[2:], trans)
+                # caculate aera:
+                box2d_proj_area = (box2d_proj[2] - box2d_proj[0]) * (box2d_proj[3] - box2d_proj[1])
+                box2d_inside_area = (bbox_2d[2] - bbox_2d[0]) * (bbox_2d[3] - bbox_2d[1])
+                crop_trunction = max(0,
+                                     box2d_proj_area - box2d_inside_area) / box2d_proj_area  # box2d/box_proj, sthis value may be slightly greater ok
+                objects[i].trucation = crop_trunction
 
             # filter some unreasonable annotations
             float_truncation = objects[i].trucation
@@ -321,14 +350,29 @@ class KITTI_Dataset_v2(data.Dataset):
                 center_3d[0] = img_size[0] - center_3d[0]
             center_3d = affine_transform(center_3d.reshape(-1), trans)
 
-            proj_inside_img = (0 <= center_3d[0] <= self.resolution[0] - 1) & (0 <= center_3d[1] <= self.resolution[1] - 1)
+            if random_crop_flag:
+                proj_inside_img = (crop_left_top[0] <= center_3d[0] <= crop_right_bottom[0] - 1) & \
+                                  (crop_left_top[1] <= center_3d[1] <= crop_right_bottom[1] - 1)
+            else:
+                proj_inside_img = (0 <= center_3d[0] <= self.resolution[0] - 1) & (
+                            0 <= center_3d[1] <= self.resolution[1] - 1)
+
             approx_center = False
             if not proj_inside_img:
                 if self.consider_outside_objs:
                     approx_center = True
                     input_center_2d = (input_bbox_2d[:2] + input_bbox_2d[2:]) / 2
-                    center_3d, edge_index = approx_proj_center(center_3d, input_center_2d.reshape(1, 2),
-                                                                        self.resolution)
+
+                    if random_crop_flag:
+                        center_3d, edge_index = approx_proj_center(center_3d, input_center_2d.reshape(1, 2),
+                                                                   left_boundary=crop_left_top,
+                                                                   right_boundary=crop_right_bottom)
+                    else:
+                        center_3d, edge_index = approx_proj_center(center_3d, input_center_2d.reshape(1, 2),
+                                                                   left_boundary=(0, 0), right_boundary=self.resolution)
+
+                    if center_3d is None:
+                        continue
                 else:
                     continue
 
