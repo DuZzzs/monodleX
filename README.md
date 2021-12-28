@@ -1,3 +1,56 @@
+This repository is modified based on the monocular 3d object detection [monodle](https://github.com/xinzhuma/monodle), with the following main additions:
+1. Support training and testing under torch1.7.0
+2. Add a lightweight network, such as res18
+3. Add support for truncation objects(modified from [monoflex](https://github.com/zhangyp15/MonoFlex))
+4. Support torch DDP mode training, see [ddp branch](https://github.com/DuZzzs/monodleX/tree/ddp)
+
+## usage
+
+### Installation
+
+We have observed that due to environmental differences, the performance fluctuates by 2 to 3 points. This code was tested under torch1.7.0, we recommend using requirements.txt for installation:
+
+```
+pip install -r requirements.txt
+```
+
+### modifications
+
+We tested some monocular detection algorithms and found that many centernet-based algorithms rely on dcnv2, which is not good for model deployment. We also found that when the dcnv2 module is removed, the performance of the model drops very seriously, see. Monodle can get better performance without relying on dcnv2. But there is still a little distance from the actual application. We mainly made some modifications based on actual application requirements:
+1. Add support for lightweight network
+    The dla network is still too big for practical applications, and we have added a lighter network such as res18.
+
+2. Add support for truncation targets.
+    Most monocular 3D target detection algorithms cannot support the detection of truncated targets. We learn from the approach in monoflex to support truncated targets. In the experiment, it is found that because there are fewer truncated objects in the kitti dataset, although we can increase truncated targets through crop images, the performance of truncated targets still requires more data for training.
+
+  ![](./docs/000350.png)
+
+3. we also provide torch DDP mode for training, see ddp branch.
+
+### performance
+
+| backbone                                          | trunc obj | AP40@Easy | AP40@Mod. | AP40@Hard |
+| ------------------------------------------------- | --------- | --------- | --------- | --------- |
+| dla(original monodle)                             | no        | 17.9389   | 13.7197   | ,12.1020  |
+| dla                                               | no        | 19.8052   | 14.7643   | 12.4731   |
+| res18                                             | no        | 11.6040   | 9.3674    | 7.8279    |
+| [res18](./experiments/example/test_kitti_v2.yaml) | yes       | 11.9599   | 9.5214    | 8.0274    |
+
+
+
+
+
+
+Hope our work can help you.
+
+-_-
+
+
+
+---
+
+
+
 # Delving into Localization Errors for Monocular 3D Detection
 
 By [Xinzhu Ma](https://scholar.google.com/citations?user=8PuKa_8AAAAJ), Yinmin Zhang, [Dan Xu](https://www.danxurgb.net/), [Dongzhan Zhou](https://scholar.google.com/citations?user=Ox6SxpoAAAAJ), [Shuai Yi](https://scholar.google.com/citations?user=afbbNmwAAAAJ), [Haojie Li](https://scholar.google.com/citations?user=pMnlgVMAAAAJ), [Wanli Ouyang](https://wlouyang.github.io/).
